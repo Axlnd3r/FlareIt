@@ -1,0 +1,36 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/.foundry/
+broadcast/*/31337/
+broadcast/**/dry-run/
+
+# Node
+node_modules/
+.next/
+dist/
+build/
+
+# Database
+backend/*.db
+backend/*.sqlite
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Temp
+*.tmp
