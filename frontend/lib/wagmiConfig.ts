@@ -1,5 +1,5 @@
 import { http, createConfig } from "wagmi";
-import { injected, metaMask } from "wagmi/connectors";
+import { injected } from "wagmi/connectors";
 import { defineChain } from "viem";
 
 // ─── Flare Coston2 Testnet Chain Definition ───────────────────────────────────
@@ -32,8 +32,7 @@ export const coston2 = defineChain({
 export const wagmiConfig = createConfig({
   chains: [coston2],
   connectors: [
-    injected(), // MetaMask + any injected wallet
-    metaMask(),
+    injected(), // Standard injected connector for EVM wallets (MetaMask, Rabby, Coinbase, etc.)
   ],
   transports: {
     [coston2.id]: http("https://coston2-api.flare.network/ext/C/rpc"),

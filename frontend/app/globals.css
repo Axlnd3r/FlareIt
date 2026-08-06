@@ -1,0 +1,67 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: 'Plus Jakarta Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #090A0E;
+  color: #F8FAFC;
+  overflow-x: hidden;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #090A0E;
+}
+::-webkit-scrollbar-thumb {
+  background: #1F2436;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #E60037;
+}
+
+/* Glassmorphism utility */
+.glass-panel {
+  background: rgba(22, 25, 38, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-panel-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.glass-panel-hover:hover {
+  border-color: rgba(230, 0, 55, 0.4);
+  box-shadow: 0 8px 30px rgba(230, 0, 55, 0.15);
+  transform: translateY(-2px);
+}
+
+.flare-glow-text {
+  text-shadow: 0 0 12px rgba(255, 26, 75, 0.5);
+}
+
+/* Red Gradient Text */
+.gradient-text-red {
+  background: linear-gradient(135deg, #FFFFFF 0%, #FFB3C1 50%, #FF1A4B 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.flare-badge {
+  background: rgba(230, 0, 55, 0.12);
+  border: 1px solid rgba(230, 0, 55, 0.3);
+  color: #FF4D73;
+}
