@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   sender      TEXT    NOT NULL,          -- lowercase EVM address (0x...)
   recipient   TEXT    NOT NULL,          -- lowercase EVM address (0x...)
   amount      TEXT    NOT NULL,          -- stored as string (bigint safe)
-  tx_hash     TEXT    NOT NULL UNIQUE,   -- transaction hash (0x...)
+  tx_hash     TEXT    NOT NULL,          -- transaction hash (0x...)
   block_number INTEGER,                  -- block number when event was emitted
   log_index   INTEGER,                   -- log index within the block
   created_at  INTEGER NOT NULL           -- Unix timestamp (seconds)
@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE INDEX IF NOT EXISTS idx_transactions_sender    ON transactions(sender);
 CREATE INDEX IF NOT EXISTS idx_transactions_recipient ON transactions(recipient);
 CREATE INDEX IF NOT EXISTS idx_transactions_created   ON transactions(created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_event ON transactions(tx_hash, log_index);
 
 -- Track last processed block for event listener restart recovery
 CREATE TABLE IF NOT EXISTS indexer_state (

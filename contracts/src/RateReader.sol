@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {IFtsoV2} from "./interfaces/IFtsoV2.sol";
+import { IFtsoV2 } from "./interfaces/IFtsoV2.sol";
 
 /// @title RateReader — Reads live XRP/USD price from FTSO v2 on Flare Coston2
 /// @notice Provides real-time XRP/USD rate for FlareIt remittance application
@@ -17,8 +17,7 @@ contract RateReader {
     /// @notice FTSO v2 Feed ID for XRP/USD
     /// @dev Feed IDs: https://dev.flare.network/ftso/feeds
     ///      Format: 0x01 + hex("XRP/USD") padded to 21 bytes
-    bytes21 public constant XRP_USD_FEED_ID =
-        bytes21(0x015852502f55534400000000000000000000000000);
+    bytes21 public constant XRP_USD_FEED_ID = bytes21(0x015852502f55534400000000000000000000000000);
 
     /// @notice Staleness threshold — reject feeds older than 5 minutes
     uint64 public constant MAX_STALENESS_SECONDS = 300;
@@ -83,11 +82,7 @@ contract RateReader {
     /// @notice Get the live XRP/USD price scaled to 18 decimals (wei format)
     /// @return priceWei Price scaled to 18 decimals
     /// @return timestamp Unix timestamp of this price update
-    function getXrpUsdRateWei()
-        external
-        view
-        returns (uint256 priceWei, uint64 timestamp)
-    {
+    function getXrpUsdRateWei() external view returns (uint256 priceWei, uint64 timestamp) {
         IFtsoV2 ftso = _getFtsoV2();
         (priceWei, timestamp) = ftso.getFeedByIdInWei(XRP_USD_FEED_ID);
 
@@ -103,17 +98,14 @@ contract RateReader {
     /// @notice Check if the XRP/USD feed is currently fresh
     /// @return isFresh True if feed is within MAX_STALENESS_SECONDS
     /// @return feedTimestamp The timestamp of the last feed update
-    function isFeedFresh()
-        external
-        view
-        returns (bool isFresh, uint64 feedTimestamp)
-    {
+    function isFeedFresh() external view returns (bool isFresh, uint64 feedTimestamp) {
         IFtsoV2 ftso = _getFtsoV2();
         // forge-lint: disable-next-line(unused-return)
-        (, , feedTimestamp) = ftso.getFeedById(XRP_USD_FEED_ID);
+        (,, feedTimestamp) = ftso.getFeedById(XRP_USD_FEED_ID);
         // forge-lint: disable-next-line(unsafe-typecast)
         uint64 currentTime = uint64(block.timestamp);
-        isFresh = !(feedTimestamp < currentTime && currentTime - feedTimestamp > MAX_STALENESS_SECONDS);
+        isFresh =
+        !(feedTimestamp < currentTime && currentTime - feedTimestamp > MAX_STALENESS_SECONDS);
     }
 
     /// @notice Returns the resolved FtsoV2 contract address (for transparency)

@@ -1,10 +1,25 @@
 /** @type {import('next').NextConfig} */
+const backendHostPort = process.env.BACKEND_HOSTPORT?.replace(/^https?:\/\//, "").replace(/\/$/, "");
+const backendOrigin = process.env.BACKEND_ORIGIN || (backendHostPort ? `http://${backendHostPort}` : "http://127.0.0.1:3001");
+
 const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
+  // Allow CI/release builds to run without colliding with a local dev server.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
+  experimental: {
+    // viem and wagmi expose large module barrels. Import only the modules used
+    // by the app so production builds do not compile every optional chain.
+    optimizePackageImports: ["viem", "wagmi"],
   },
   typescript: {
     ignoreBuildErrors: false,
+  },
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: `${backendOrigin}/api/:path*`,
+      },
+    ];
   },
   webpack: (config) => {
     config.resolve.fallback = {

@@ -2,33 +2,33 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
 import { Navbar } from "@/components/Navbar";
-import { Flame, ShieldCheck } from "lucide-react";
+import { AmbientBackground } from "@/components/AmbientBackground";
+import { BrandMark } from "@/components/BrandMark";
+import { ShieldCheck } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "FlareIt — Trustless FXRP & FTSO v2 Remittance Rail",
-  description: "Cross-border remittance for Indonesian TKI powered by FXRP & FTSO v2 real-time price feeds on Flare Network.",
+  title: "FlareIt — Put XRP to Work on Flare",
+  description: "Onboard XRP through FAssets, move FXRP, and pay merchants with verifiable Coston2 receipts.",
+  icons: { icon: "/brand/flareit-mark.png", apple: "/brand/flareit-mark.png" },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="id" className="dark">
-      <body className="bg-background text-slate-100 min-h-screen flex flex-col antialiased">
+    <html lang="en" className="dark">
+      <body className="flex min-h-screen flex-col bg-background text-slate-100 antialiased">
         <Providers>
+          <AmbientBackground />
           <Navbar />
 
-          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <main className="relative z-10 mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
             {children}
           </main>
 
-          <footer className="border-t border-slate-800/80 bg-surface-glass py-8 mt-16">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-400">
+          <footer className="relative z-10 mt-16 border-t border-slate-800/80 bg-background/80 py-8 backdrop-blur-xl">
+            <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 text-xs text-slate-400 sm:px-6 md:flex-row lg:px-8">
               <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-lg bg-gradient-flare flex items-center justify-center">
-                  <Flame className="w-3.5 h-3.5 text-white" />
+                <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-[#090a0e]">
+                  <BrandMark className="h-5 w-5 object-contain" />
                 </div>
                 <span className="font-bold text-white">FlareIt</span>
                 <span>• Flare Summer Signal Hackathon Submission</span>
@@ -36,7 +36,7 @@ export default function RootLayout({
 
               <div className="flex items-center gap-6">
                 <span className="flex items-center gap-1.5 text-emerald-400">
-                  <ShieldCheck className="w-4 h-4" /> Coston2 Testnet (Chain ID 114)
+                  <ShieldCheck className="h-4 w-4" /> Coston2 Testnet (Chain ID 114)
                 </span>
                 <span className="text-slate-500">FTSO v2 Enshrined Feeds</span>
               </div>

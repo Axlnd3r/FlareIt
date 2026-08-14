@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Test, console} from "forge-std/Test.sol";
-import {SendContract} from "../src/SendContract.sol";
+import { Test, console } from "forge-std/Test.sol";
+import { SendContract } from "../src/SendContract.sol";
 
 /// @title SendContract Tests — Uses mock ERC-20 to test transfer logic
 /// @dev Run with: forge test -v
@@ -18,10 +18,7 @@ contract SendContractTest is Test {
     uint256 constant SEND_AMOUNT = 100e6; // 100 FXRP
 
     event Sent(
-        address indexed sender,
-        address indexed recipient,
-        uint256 amount,
-        uint256 timestamp
+        address indexed sender, address indexed recipient, uint256 amount, uint256 timestamp
     );
 
     function setUp() public {
@@ -88,7 +85,9 @@ contract SendContractTest is Test {
         vm.prank(sender);
         sendContract.send(recipient, SEND_AMOUNT);
 
-        assertEq(sendContract.totalVolume(), SEND_AMOUNT * 2, "Volume should be double after 2 sends");
+        assertEq(
+            sendContract.totalVolume(), SEND_AMOUNT * 2, "Volume should be double after 2 sends"
+        );
         assertEq(sendContract.totalTransactions(), 2, "Transaction count should be 2");
     }
 
@@ -134,9 +133,7 @@ contract SendContractTest is Test {
         vm.prank(sender);
         vm.expectRevert(
             abi.encodeWithSelector(
-                SendContract.InsufficientBalance.selector,
-                INITIAL_BALANCE,
-                tooMuch
+                SendContract.InsufficientBalance.selector, INITIAL_BALANCE, tooMuch
             )
         );
         sendContract.send(recipient, tooMuch);
@@ -152,9 +149,7 @@ contract SendContractTest is Test {
         vm.prank(sender);
         vm.expectRevert(
             abi.encodeWithSelector(
-                SendContract.InsufficientAllowance.selector,
-                lowAllowance,
-                SEND_AMOUNT
+                SendContract.InsufficientAllowance.selector, lowAllowance, SEND_AMOUNT
             )
         );
         sendContract.send(recipient, SEND_AMOUNT);
@@ -176,19 +171,13 @@ contract SendContractTest is Test {
         vm.prank(sender);
         mockFxrp.approve(address(sendContract), SEND_AMOUNT);
 
-        assertEq(
-            sendContract.getAllowance(sender),
-            SEND_AMOUNT,
-            "Should return correct allowance"
-        );
+        assertEq(sendContract.getAllowance(sender), SEND_AMOUNT, "Should return correct allowance");
     }
 
     /// @notice Test getFxrpAddress returns the FXRP token address
     function test_getFxrpAddress_returnsCorrectAddress() public view {
         assertEq(
-            sendContract.getFxrpAddress(),
-            address(mockFxrp),
-            "Should return FXRP token address"
+            sendContract.getFxrpAddress(), address(mockFxrp), "Should return FXRP token address"
         );
     }
 
@@ -222,8 +211,13 @@ contract MockFXRP {
         emit Transfer(address(0), to, amount);
     }
 
-    function totalSupply() external view returns (uint256) { return _totalSupply; }
-    function balanceOf(address account) external view returns (uint256) { return _balances[account]; }
+    function totalSupply() external view returns (uint256) {
+        return _totalSupply;
+    }
+
+    function balanceOf(address account) external view returns (uint256) {
+        return _balances[account];
+    }
 
     function transfer(address to, uint256 amount) external returns (bool) {
         require(_balances[msg.sender] >= amount, "Insufficient balance");

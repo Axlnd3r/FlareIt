@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { useAccount, useConnect, useDisconnect, useBalance } from "wagmi";
+import { useAccount, useConnect, useDisconnect, useBalance, useChainId, useSwitchChain } from "wagmi";
 import { formatUnits } from "viem";
 import { Wallet, LogOut, ChevronDown, ExternalLink } from "lucide-react";
 import { shortenAddress } from "@/lib/api";
@@ -9,6 +9,8 @@ import { EXPLORER_BASE } from "@/lib/contracts";
 
 export function WalletConnectButton() {
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const { switchChain, isPending: isSwitching } = useSwitchChain();
   const { connect, connectors, isPending } = useConnect();
   const { disconnect } = useDisconnect();
   const [showMenu, setShowMenu] = useState(false);
@@ -28,9 +30,9 @@ export function WalletConnectButton() {
           onClick={() => setShowMenu(!showMenu)}
           className="flex items-center gap-2.5 px-4 py-2 rounded-xl bg-surface-glass border border-slate-800 hover:border-flare/40 transition-all text-sm font-medium shadow-card-shadow"
         >
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-flare-crimson/15 text-flare-light text-xs border border-flare-crimson/30">
-            <span className="w-1.5 h-1.5 rounded-full bg-flare-bright animate-pulse" />
-            <span>Coston2</span>
+          <div className={`flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs ${chainId === 114 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-amber-500/30 bg-amber-500/10 text-amber-300"}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${chainId === 114 ? "bg-emerald-400" : "bg-amber-400"}`} />
+            <span>{chainId === 114 ? "Coston2" : `Chain ${chainId}`}</span>
           </div>
 
           <span className="text-slate-200 font-mono font-medium">
@@ -58,11 +60,21 @@ export function WalletConnectButton() {
             </div>
 
             <div className="py-3">
-              <p className="text-xs text-slate-400">Saldo Gas Native (C2FLR)</p>
+              <p className="text-xs text-slate-400">Native gas balance (C2FLR)</p>
               <p className="text-base font-semibold text-slate-100">
                 {balance ? `${formattedBalance} ${balance.symbol}` : "Loading..."}
               </p>
             </div>
+
+            {chainId !== 114 && (
+              <button
+                onClick={() => switchChain({ chainId: 114 })}
+                disabled={isSwitching}
+                className="mb-2 w-full rounded-lg bg-amber-400 px-3 py-2 text-xs font-bold text-slate-950 disabled:opacity-50"
+              >
+                Switch to Coston2
+              </button>
+            )}
 
             <button
               onClick={() => {

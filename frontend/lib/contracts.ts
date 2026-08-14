@@ -5,7 +5,7 @@
 export const CONTRACT_ADDRESSES = {
   // FXRP ERC-20 token on Coston2 — from faucet.flare.network/coston2
   FXRP: (process.env.NEXT_PUBLIC_FXRP_ADDRESS ||
-    "0x0000000000000000000000000000000000000000") as `0x${string}`,
+    "0x0b6A3645c240605887a5532109323A3E12273dc7") as `0x${string}`,
 
   // Deployed by Deploy.s.sol
   RATE_READER: (process.env.NEXT_PUBLIC_RATE_READER_ADDRESS ||
@@ -13,7 +13,16 @@ export const CONTRACT_ADDRESSES = {
 
   SEND_CONTRACT: (process.env.NEXT_PUBLIC_SEND_CONTRACT_ADDRESS ||
     "0x0000000000000000000000000000000000000000") as `0x${string}`,
+
+  MERCHANT_PAYMENT: (process.env.NEXT_PUBLIC_MERCHANT_PAYMENT_ADDRESS ||
+    "0x0000000000000000000000000000000000000000") as `0x${string}`,
 } as const;
+
+export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
+
+export function isContractConfigured(address: string): boolean {
+  return address !== ZERO_ADDRESS;
+}
 
 // ─── RateReader ABI ───────────────────────────────────────────────────────────
 export const RATE_READER_ABI = [
@@ -151,6 +160,42 @@ export const ERC20_ABI = [
     stateMutability: "view",
     inputs: [],
     outputs: [{ name: "", type: "string" }],
+  },
+] as const;
+
+export const MERCHANT_PAYMENT_ABI = [
+  {
+    name: "payMerchant",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "paymentId", type: "bytes32" },
+      { name: "merchant", type: "address" },
+      { name: "amount", type: "uint256" },
+      { name: "idrQuote", type: "uint256" },
+      { name: "merchantReferenceHash", type: "bytes32" },
+      { name: "deadline", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "getPayment",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "paymentId", type: "bytes32" }],
+    outputs: [{
+      name: "",
+      type: "tuple",
+      components: [
+        { name: "payer", type: "address" },
+        { name: "merchant", type: "address" },
+        { name: "amount", type: "uint256" },
+        { name: "idrQuote", type: "uint256" },
+        { name: "merchantReferenceHash", type: "bytes32" },
+        { name: "deadline", type: "uint256" },
+        { name: "timestamp", type: "uint256" },
+      ],
+    }],
   },
 ] as const;
 

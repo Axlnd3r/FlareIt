@@ -1,216 +1,195 @@
 import { Router, Request, Response } from "express";
 import { createPublicClient, http } from "viem";
-import { config } from "../config";
+import { config, isConfigured } from "../config";
 
 const router = Router();
+const XRP_USD_FEED_ID = "0x015852502f55534400000000000000000000000000" as const;
+const MAX_FTSO_AGE_SECONDS = 300;
 
-// ─── Coston2 chain definition ─────────────────────────────────────────────────
-const coston2Chain = {
+const chain = {
   id: 114,
   name: "Flare Coston2",
-  network: "coston2",
   nativeCurrency: { name: "Coston2 FLR", symbol: "C2FLR", decimals: 18 },
-  rpcUrls: {
-    default: { http: [config.RPC_URL] },
-    public: { http: [config.RPC_URL] },
-  },
+  rpcUrls: { default: { http: [config.RPC_URL] } },
 } as const;
 
-// ─── RateReader ABI (minimal) ─────────────────────────────────────────────────
-const RATE_READER_ABI = [
-  {
-    name: "getXrpUsdRateWei",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [
-      { name: "priceWei", type: "uint256" },
-      { name: "timestamp", type: "uint64" },
-    ],
-  },
-  {
-    name: "isFeedFresh",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [
-      { name: "isFresh", type: "bool" },
-      { name: "feedTimestamp", type: "uint64" },
-    ],
-  },
-] as const;
+const client = createPublicClient({ chain, transport: http(config.RPC_URL) });
 
-// ─── Rate Cache ───────────────────────────────────────────────────────────────
-interface RateCache {
-  xrpUsd: number;        // XRP/USD from FTSO v2 (on-chain, real)
-  xrpIdr: number;        // XRP/IDR = xrpUsd × usdIdr (derived)
-  usdIdr: number;        // USD/IDR from CoinGecko (off-chain, labeled)
-  ftsoTimestamp: number; // FTSO feed timestamp
+const RATE_READER_ABI = [{
+  name: "getXrpUsdRateWei",
+  type: "function",
+  stateMutability: "view",
+  inputs: [],
+  outputs: [
+    { name: "priceWei", type: "uint256" },
+    { name: "timestamp", type: "uint64" },
+  ],
+}] as const;
+
+const FTSO_ABI = [{
+  name: "getFeedById",
+  type: "function",
+  stateMutability: "view",
+  inputs: [{ name: "feedId", type: "bytes21" }],
+  outputs: [
+    { name: "value", type: "uint256" },
+    { name: "decimals", type: "int8" },
+    { name: "timestamp", type: "uint64" },
+  ],
+}] as const;
+
+export interface RateData {
+  xrpUsd: number;
+  xrpIdr: number;
+  usdIdr: number;
+  ftsoTimestamp: number;
   cacheUpdatedAt: number;
   ftsoFeedFresh: boolean;
   sources: {
-    xrpUsd: "ftso-v2-on-chain";
-    usdIdr: "coingecko-off-chain";
+    xrpUsd: "rate-reader-on-chain" | "ftso-v2-direct-on-chain";
+    usdIdr: "coingecko-off-chain" | "coingecko-off-chain-stale-cache";
     xrpIdr: "derived";
   };
 }
 
-let rateCache: RateCache | null = null;
+let rateCache: RateData | null = null;
 let lastFtsoUpdate = 0;
 let lastIdrUpdate = 0;
-let cachedUsdIdr = 15800; // fallback IDR rate if CoinGecko fails
+let cachedUsdIdr: number | null = null;
+let rateTimer: NodeJS.Timeout | null = null;
 
-// ─── Fetch XRP/USD from FTSO v2 (on-chain) ───────────────────────────────────
-async function fetchXrpUsdFromFtso(): Promise<{ priceUsd: number; timestamp: number; isFresh: boolean }> {
-  if (config.RATE_READER_ADDRESS === "0x0000000000000000000000000000000000000000") {
-    // Contract not deployed yet — return mock for development
-    console.log("[Rate] RateReader not configured, using dev mock");
-    return { priceUsd: 0.52, timestamp: Math.floor(Date.now() / 1000), isFresh: true };
+export function validateFtsoRate(priceUsd: number, timestamp: number): void {
+  const now = Math.floor(Date.now() / 1000);
+  if (!Number.isFinite(priceUsd) || priceUsd <= 0) {
+    throw new Error("FTSO returned a zero or invalid XRP/USD price");
   }
-
-  const client = createPublicClient({
-    chain: coston2Chain,
-    transport: http(config.RPC_URL),
-  });
-
-  try {
-    const [rateResult, freshResult] = await Promise.all([
-      client.readContract({
-        address: config.RATE_READER_ADDRESS,
-        abi: RATE_READER_ABI,
-        functionName: "getXrpUsdRateWei",
-      }),
-      client.readContract({
-        address: config.RATE_READER_ADDRESS,
-        abi: RATE_READER_ABI,
-        functionName: "isFeedFresh",
-      }),
-    ]);
-
-    const [priceWei, timestamp] = rateResult;
-    const [isFresh] = freshResult;
-
-    // Convert from 18-decimal wei to USD float
-    const priceUsd = Number(priceWei) / 1e18;
-
-    return { priceUsd, timestamp: Number(timestamp), isFresh };
-  } catch (err) {
-    console.error("[Rate] FTSO read error:", err);
-    // Return last cached value if available
-    if (rateCache) {
-      return {
-        priceUsd: rateCache.xrpUsd,
-        timestamp: rateCache.ftsoTimestamp,
-        isFresh: false,
-      };
-    }
-    throw err;
+  if (!Number.isSafeInteger(timestamp) || timestamp <= 0 || timestamp > now + 60) {
+    throw new Error("FTSO returned an invalid timestamp");
+  }
+  if (now - timestamp > MAX_FTSO_AGE_SECONDS) {
+    throw new Error(`FTSO XRP/USD feed is stale by ${now - timestamp} seconds`);
   }
 }
 
-// ─── Fetch USD/IDR from CoinGecko (off-chain) ────────────────────────────────
-async function fetchUsdIdrFromCoinGecko(): Promise<number> {
+async function fetchXrpUsd(): Promise<{
+  priceUsd: number;
+  timestamp: number;
+  source: RateData["sources"]["xrpUsd"];
+}> {
+  if (isConfigured(config.RATE_READER_ADDRESS)) {
+    const [priceWei, timestamp] = await client.readContract({
+      address: config.RATE_READER_ADDRESS,
+      abi: RATE_READER_ABI,
+      functionName: "getXrpUsdRateWei",
+    });
+    const result = {
+      priceUsd: Number(priceWei) / 1e18,
+      timestamp: Number(timestamp),
+      source: "rate-reader-on-chain",
+    } as const;
+    validateFtsoRate(result.priceUsd, result.timestamp);
+    return result;
+  }
+
+  const [value, decimals, timestamp] = await client.readContract({
+    address: config.FTSO_V2_ADDRESS,
+    abi: FTSO_ABI,
+    functionName: "getFeedById",
+    args: [XRP_USD_FEED_ID],
+  });
+  const scale = 10 ** Number(decimals);
+  const result = {
+    priceUsd: Number(value) / scale,
+    timestamp: Number(timestamp),
+    source: "ftso-v2-direct-on-chain",
+  } as const;
+  validateFtsoRate(result.priceUsd, result.timestamp);
+  return result;
+}
+
+async function fetchUsdIdr(xrpUsd: number): Promise<{
+  value: number;
+  source: RateData["sources"]["usdIdr"];
+}> {
   try {
-    const res = await fetch(
+    const response = await fetch(
       `${config.COINGECKO_API_URL}/simple/price?ids=ripple&vs_currencies=idr`,
       { signal: AbortSignal.timeout(5000) }
     );
-    if (!res.ok) throw new Error(`CoinGecko HTTP ${res.status}`);
+    if (!response.ok) throw new Error(`CoinGecko HTTP ${response.status}`);
 
-    const data = await res.json() as { ripple?: { idr?: number } };
-    const xrpIdrFromCoingecko = data.ripple?.idr;
+    const data = await response.json() as { ripple?: { idr?: number } };
+    const xrpIdr = data.ripple?.idr;
+    if (!xrpIdr || xrpIdr <= 0 || xrpUsd <= 0) throw new Error("Invalid rate response");
 
-    if (!xrpIdrFromCoingecko || xrpIdrFromCoingecko <= 0) {
-      throw new Error("Invalid CoinGecko response");
+    cachedUsdIdr = xrpIdr / xrpUsd;
+    return { value: cachedUsdIdr, source: "coingecko-off-chain" };
+  } catch (error) {
+    if (cachedUsdIdr) {
+      console.warn("[Rate] CoinGecko unavailable; serving labeled stale cache", error);
+      return { value: cachedUsdIdr, source: "coingecko-off-chain-stale-cache" };
     }
-
-    // We want USD/IDR, not XRP/IDR — use XRP/USD from FTSO to derive
-    // USD/IDR = XRP/IDR (CoinGecko) / XRP/USD (FTSO)
-    const currentXrpUsd = rateCache?.xrpUsd ?? 0.52;
-    const derivedUsdIdr = currentXrpUsd > 0 ? xrpIdrFromCoingecko / currentXrpUsd : 15800;
-
-    cachedUsdIdr = derivedUsdIdr;
-    console.log(`[Rate] CoinGecko: XRP/IDR=${xrpIdrFromCoingecko}, derived USD/IDR=${derivedUsdIdr.toFixed(0)}`);
-    return derivedUsdIdr;
-  } catch (err) {
-    console.warn("[Rate] CoinGecko failed, using cached IDR rate:", cachedUsdIdr, err);
-    return cachedUsdIdr;
+    throw error;
   }
 }
 
-// ─── Update rate cache ────────────────────────────────────────────────────────
-async function updateRateCache(): Promise<void> {
+export async function updateRateCache(force = false): Promise<RateData> {
   const now = Date.now();
+  const refreshFtso = force || !rateCache || now - lastFtsoUpdate >= config.RATE_REFRESH_INTERVAL_MS;
+  const ftso = refreshFtso
+    ? await fetchXrpUsd()
+    : {
+        priceUsd: rateCache!.xrpUsd,
+        timestamp: rateCache!.ftsoTimestamp,
+        source: rateCache!.sources.xrpUsd,
+      };
+  if (refreshFtso) lastFtsoUpdate = now;
 
-  let xrpUsd = rateCache?.xrpUsd ?? 0;
-  let ftsoTimestamp = rateCache?.ftsoTimestamp ?? 0;
-  let isFresh = rateCache?.ftsoFeedFresh ?? false;
+  const refreshIdr = force || !cachedUsdIdr || now - lastIdrUpdate >= config.IDR_REFRESH_INTERVAL_MS;
+  const idr = refreshIdr
+    ? await fetchUsdIdr(ftso.priceUsd)
+    : { value: cachedUsdIdr!, source: rateCache!.sources.usdIdr };
+  if (refreshIdr) lastIdrUpdate = now;
 
-  // Refresh FTSO rate every RATE_REFRESH_INTERVAL_MS
-  if (now - lastFtsoUpdate > config.RATE_REFRESH_INTERVAL_MS) {
-    try {
-      const ftsoData = await fetchXrpUsdFromFtso();
-      xrpUsd = ftsoData.priceUsd;
-      ftsoTimestamp = ftsoData.timestamp;
-      isFresh = ftsoData.isFresh;
-      lastFtsoUpdate = now;
-      console.log(`[Rate] FTSO XRP/USD = $${xrpUsd.toFixed(4)} (fresh: ${isFresh})`);
-    } catch (err) {
-      console.error("[Rate] Failed to update FTSO rate:", err);
-    }
-  }
-
-  // Refresh IDR rate every IDR_REFRESH_INTERVAL_MS
-  if (now - lastIdrUpdate > config.IDR_REFRESH_INTERVAL_MS) {
-    const usdIdr = await fetchUsdIdrFromCoinGecko();
-    cachedUsdIdr = usdIdr;
-    lastIdrUpdate = now;
-  }
-
+  const nowSeconds = Math.floor(now / 1000);
   rateCache = {
-    xrpUsd,
-    usdIdr: cachedUsdIdr,
-    xrpIdr: xrpUsd * cachedUsdIdr,
-    ftsoTimestamp,
-    cacheUpdatedAt: Math.floor(now / 1000),
-    ftsoFeedFresh: isFresh,
-    sources: {
-      xrpUsd: "ftso-v2-on-chain",
-      usdIdr: "coingecko-off-chain",
-      xrpIdr: "derived",
-    },
+    xrpUsd: ftso.priceUsd,
+    usdIdr: idr.value,
+    xrpIdr: ftso.priceUsd * idr.value,
+    ftsoTimestamp: ftso.timestamp,
+    cacheUpdatedAt: nowSeconds,
+    ftsoFeedFresh: nowSeconds - ftso.timestamp <= MAX_FTSO_AGE_SECONDS,
+    sources: { xrpUsd: ftso.source, usdIdr: idr.source, xrpIdr: "derived" },
   };
+  return rateCache;
 }
 
-// ─── Start background rate updater ───────────────────────────────────────────
+export async function getRateSnapshot(): Promise<RateData> {
+  if (!rateCache || Date.now() - lastFtsoUpdate > config.RATE_REFRESH_INTERVAL_MS * 3) {
+    return updateRateCache();
+  }
+  return rateCache;
+}
+
 export function startRateUpdater(): void {
-  console.log("[Rate] Starting rate cache updater...");
-  updateRateCache().catch(console.error);
-  setInterval(() => updateRateCache().catch(console.error), config.RATE_REFRESH_INTERVAL_MS);
+  if (rateTimer) return;
+  updateRateCache().catch((error) => console.error("[Rate] Initial update failed", error));
+  rateTimer = setInterval(
+    () => updateRateCache().catch((error) => console.error("[Rate] Update failed", error)),
+    config.RATE_REFRESH_INTERVAL_MS
+  );
+  rateTimer.unref();
 }
 
-/**
- * GET /api/rate
- * Returns cached XRP/USD (on-chain FTSO) + derived IDR rates
- *
- * Response includes source metadata so the frontend can display
- * honest labels: "XRP/USD from FTSO v2 (on-chain)" vs "IDR rate from CoinGecko (off-chain)"
- */
 router.get("/", async (_req: Request, res: Response): Promise<void> => {
   try {
-    if (!rateCache || Date.now() - lastFtsoUpdate > config.RATE_REFRESH_INTERVAL_MS * 3) {
-      await updateRateCache();
-    }
-
-    if (!rateCache) {
-      res.status(503).json({ error: "Rate data not available yet, try again shortly" });
-      return;
-    }
-
-    res.json(rateCache);
-  } catch (err) {
-    console.error("[API/rate] Error:", err);
-    res.status(500).json({ error: "Failed to fetch rate data" });
+    res.json(await getRateSnapshot());
+  } catch (error) {
+    console.error("[API/rate] Rate unavailable", error);
+    res.status(503).json({
+      error: "Verified rate data is unavailable",
+      code: "RATE_UNAVAILABLE",
+    });
   }
 });
 

@@ -1,26 +1,16 @@
 "use client";
 
-import React, { useState } from "react";
 import { RateDisplay } from "@/components/RateDisplay";
 import { SendForm } from "@/components/SendForm";
-import { type RateData } from "@/lib/api";
 
 export default function SendPage() {
-  const [currentRate, setCurrentRate] = useState<RateData | null>(null);
-
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
-      <div>
-        <h1 className="text-3xl font-extrabold text-white">Kirim FXRP Instan</h1>
-        <p className="text-sm text-slate-400 mt-1">
-          Kirim dana remitansi ke Indonesia dengan kurs live FTSO v2 dan biaya mendekati nol.
-        </p>
-      </div>
-
-      {/* Live Rate Display */}
-      <RateDisplay onRateChange={setCurrentRate} compact />
-
-      {/* Primary Remittance Form */}
+    <div className="page-enter mx-auto max-w-4xl space-y-6">
+      <header>
+        <h1 className="text-3xl font-bold text-white">Send FXRP</h1>
+        <p className="mt-1 text-sm text-slate-400">Transfer FTestXRP through FlareIt and verify the receipt on Coston2.</p>
+      </header>
+      <RateDisplay compact />
       <SendForm />
     </div>
   );

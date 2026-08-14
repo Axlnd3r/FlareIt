@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {IFAssetsFXRP} from "./interfaces/IFAssetsFXRP.sol";
+import { IFAssetsFXRP } from "./interfaces/IFAssetsFXRP.sol";
 
 /// @title SendContract — Trustless FXRP transfer hub for FlareIt remittance
 /// @notice Allows senders to transfer FXRP to recipients with full event logging
@@ -41,10 +41,7 @@ contract SendContract {
     /// @param amount Amount of FXRP transferred (in smallest unit, 6 decimals)
     /// @param timestamp Block timestamp of the transfer
     event Sent(
-        address indexed sender,
-        address indexed recipient,
-        uint256 amount,
-        uint256 timestamp
+        address indexed sender, address indexed recipient, uint256 amount, uint256 timestamp
     );
 
     // ─── Errors ───────────────────────────────────────────────────────────────

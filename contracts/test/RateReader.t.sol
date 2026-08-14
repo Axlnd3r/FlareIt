@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Test, console} from "forge-std/Test.sol";
-import {RateReader} from "../src/RateReader.sol";
+import { Test, console } from "forge-std/Test.sol";
+import { RateReader } from "../src/RateReader.sol";
 
 /// @title RateReader Tests — Fork Coston2 to validate live FTSO v2 feed
 /// @dev Run with:
@@ -21,8 +21,12 @@ contract RateReaderTest is Test {
 
     // Known FtsoV2 address on Coston2 (verified via ContractRegistry call)
     address constant FTSO_V2_COSTON2 = 0xC4e9c78EA53db782E28f28Fdf80BaF59336B304d;
+    address constant CONTRACT_REGISTRY = 0xaD67FE66660Fb8dFE9d6b1b4240d8650e30F6019;
 
     function setUp() public {
+        if (CONTRACT_REGISTRY.code.length == 0) {
+            vm.skip(true);
+        }
         rateReader = new RateReader();
     }
 
@@ -53,15 +57,13 @@ contract RateReaderTest is Test {
         assertGt(timestamp, 0, "Timestamp should be non-zero");
 
         // Feed should be fresh (within 10 minutes at time of test)
-        uint64 age = timestamp < uint64(block.timestamp)
-            ? uint64(block.timestamp) - timestamp
-            : 0;
+        uint64 age = timestamp < uint64(block.timestamp) ? uint64(block.timestamp) - timestamp : 0;
         console.log("Feed age (seconds):", age);
         assertLt(age, 600, "Feed should be updated within 10 minutes");
 
         // XRP price sanity check with decimals=6: price/1e6 should be $0.01 - $1000
         if (decimals == 6) {
-            assertGt(price, 10000, "XRP price < $0.01 seems too low");        // > $0.01
+            assertGt(price, 10000, "XRP price < $0.01 seems too low"); // > $0.01
             assertLt(price, 1000_000_000, "XRP price > $1000 seems too high"); // < $1000
         }
     }
@@ -76,7 +78,7 @@ contract RateReaderTest is Test {
         assertGt(priceWei, 0, "XRP/USD priceWei should be non-zero");
 
         // priceWei in 18-decimal format: XRP should be $0.01 - $1000
-        assertGt(priceWei, 1e16, "XRP price too low (< $0.01)");   // 0.01 * 1e18
+        assertGt(priceWei, 1e16, "XRP price too low (< $0.01)"); // 0.01 * 1e18
         assertLt(priceWei, 1000e18, "XRP price too high (> $1000)");
     }
 
@@ -93,11 +95,7 @@ contract RateReaderTest is Test {
     /// @notice Test feed constants are correct
     function test_xrpUsdFeedId_isCorrect() public view {
         bytes21 expectedFeedId = bytes21(0x015852502f55534400000000000000000000000000);
-        assertEq(
-            rateReader.XRP_USD_FEED_ID(),
-            expectedFeedId,
-            "XRP/USD feed ID mismatch"
-        );
+        assertEq(rateReader.XRP_USD_FEED_ID(), expectedFeedId, "XRP/USD feed ID mismatch");
     }
 
     /// @notice Test max staleness constant
@@ -114,14 +112,12 @@ contract RateReaderTest is Test {
         assertEq(rateReader.MAX_STALENESS_SECONDS(), 300, "Staleness threshold should be 5 minutes");
 
         // Verify the feed is currently fresh (age < 300 seconds)
-        (, , uint64 feedTimestamp) = rateReader.getXrpUsdRate();
-        uint64 age = feedTimestamp < uint64(block.timestamp)
-            ? uint64(block.timestamp) - feedTimestamp
-            : 0;
+        (,, uint64 feedTimestamp) = rateReader.getXrpUsdRate();
+        uint64 age =
+            feedTimestamp < uint64(block.timestamp) ? uint64(block.timestamp) - feedTimestamp : 0;
         assertLt(age, 300, "Live feed age should be within staleness window");
         console.log("Current feed age:", age, "seconds (< 300 is fresh)");
     }
-
 
     /// @notice Test getFtsoV2Address returns non-zero address
     function test_getFtsoV2Address_nonZero() public {

@@ -1,0 +1,63 @@
+services:
+  - type: web
+    name: flareit-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: RPC_URL
+        value: https://coston2-api.flare.network/ext/C/rpc
+      - key: SEND_CONTRACT_ADDRESS
+        value: 0xB06c800Edd7DfFCAA6fa894CE9B2FDD9a7C7BEE6
+      - key: RATE_READER_ADDRESS
+        value: 0x7d53Ff07dE9F8b0d9911d90C0545992f4b7835Fc
+      - key: MERCHANT_PAYMENT_ADDRESS
+        value: 0xE7ebAbD3bb94D7d6a649215F9Df0D66ad97f8224
+      - key: FXRP_ADDRESS
+        value: 0x0b6A3645c240605887a5532109323A3E12273dc7
+      - key: ASSET_MANAGER_FXRP_ADDRESS
+        value: 0xc1Ca88b937d0b528842F95d5731ffB586f4fbDFA
+      - key: FTSO_V2_ADDRESS
+        value: 0xC4e9c78EA53db782E28f28Fdf80BaF59336B304d
+      - key: INDEXER_START_BLOCK
+        value: 33924221
+      - key: INDEXER_BLOCK_CHUNK
+        value: 30
+      - key: DB_PATH
+        value: /tmp/flareit.db
+      - key: XAMAN_API_KEY
+        sync: false
+      - key: XAMAN_API_SECRET
+        sync: false
+
+  - type: web
+    name: flareit-web
+    runtime: node
+    plan: free
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: BACKEND_HOSTPORT
+        fromService:
+          type: web
+          name: flareit-api
+          property: hostport
+      - key: NEXT_PUBLIC_FXRP_ADDRESS
+        value: 0x0b6A3645c240605887a5532109323A3E12273dc7
+      - key: NEXT_PUBLIC_RATE_READER_ADDRESS
+        value: 0x7d53Ff07dE9F8b0d9911d90C0545992f4b7835Fc
+      - key: NEXT_PUBLIC_SEND_CONTRACT_ADDRESS
+        value: 0xB06c800Edd7DfFCAA6fa894CE9B2FDD9a7C7BEE6
+      - key: NEXT_PUBLIC_MERCHANT_PAYMENT_ADDRESS
+        value: 0xE7ebAbD3bb94D7d6a649215F9Df0D66ad97f8224

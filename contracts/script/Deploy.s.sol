@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Script, console} from "forge-std/Script.sol";
-import {RateReader} from "../src/RateReader.sol";
-import {SendContract} from "../src/SendContract.sol";
+import { Script, console } from "forge-std/Script.sol";
+import { RateReader } from "../src/RateReader.sol";
+import { SendContract } from "../src/SendContract.sol";
+import { MerchantPayment } from "../src/MerchantPayment.sol";
 
 /// @title Deploy — Deploy RateReader and SendContract to Flare Coston2
 /// @dev Run with:
@@ -43,6 +44,10 @@ contract Deploy is Script {
         SendContract sendContract = new SendContract(fxrpAddress);
         console.log("SendContract deployed at:", address(sendContract));
 
+        // 3. Deploy the on-chain FXRP merchant payment rail
+        MerchantPayment merchantPayment = new MerchantPayment(fxrpAddress);
+        console.log("MerchantPayment deployed at:", address(merchantPayment));
+
         vm.stopBroadcast();
 
         // 3. Print summary for ARCHITECTURE.md
@@ -50,6 +55,7 @@ contract Deploy is Script {
         console.log("COPY THESE TO docs/ARCHITECTURE.md:");
         console.log("RateReader:   ", address(rateReader));
         console.log("SendContract: ", address(sendContract));
+        console.log("MerchantPayment:", address(merchantPayment));
         console.log("FXRP Token:   ", fxrpAddress);
         console.log("Explorer:     https://coston2-explorer.flare.network");
         console.log("==============================");

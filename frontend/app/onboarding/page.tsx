@@ -1,133 +1,188 @@
 "use client";
 
-import React, { useEffect } from "react";
-import Link from "next/link";
-import { useAccount, useReadContract } from "wagmi";
+import { useCallback, useEffect, useState } from "react";
+import { useAccount, useChainId, useReadContract, useSwitchChain } from "wagmi";
 import { formatUnits } from "viem";
-import { ArrowRightLeft, Coins, ExternalLink, ShieldCheck, CheckCircle2, ArrowRight, Info } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
+import { AlertCircle, ArrowRightLeft, CheckCircle2, Copy, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { CONTRACT_ADDRESSES, ERC20_ABI, FXRP_DECIMALS } from "@/lib/contracts";
+import { createXamanMint, fetchXamanMintStatus, prepareDirectMint, type DirectMintPreparation } from "@/lib/api";
 
 export default function OnboardingPage() {
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const { switchChain } = useSwitchChain();
+  const [amountXrp, setAmountXrp] = useState("10");
+  const [prepared, setPrepared] = useState<DirectMintPreparation | null>(null);
+  const [xamanUrl, setXamanUrl] = useState<string | null>(null);
+  const [xamanUuid, setXamanUuid] = useState<string | null>(null);
+  const [xamanSocketUrl, setXamanSocketUrl] = useState<string | null>(null);
+  const [signingStatus, setSigningStatus] = useState<"idle" | "waiting" | "signed" | "rejected">("idle");
+  const [xrplHash, setXrplHash] = useState("");
+  const [loading, setLoading] = useState<"prepare" | "xaman" | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const { data: fxrpBalanceRaw, refetch } = useReadContract({
+  const { data: balanceRaw, refetch: refetchBalance } = useReadContract({
     address: CONTRACT_ADDRESSES.FXRP,
     abi: ERC20_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
-    query: { enabled: !!address },
+    query: { enabled: Boolean(address && chainId === 114) },
   });
+  const balance = balanceRaw ? formatUnits(balanceRaw, FXRP_DECIMALS) : "0";
 
-  const fxrpBalance = fxrpBalanceRaw ? Number(formatUnits(fxrpBalanceRaw as bigint, FXRP_DECIMALS)) : 0;
+  const refreshXamanStatus = useCallback(async (uuid = xamanUuid): Promise<void> => {
+    if (!uuid) return;
+    const status = await fetchXamanMintStatus(uuid);
+    if (status.signed && status.txid) {
+      setXrplHash(status.txid);
+      setSigningStatus("signed");
+      void refetchBalance();
+    } else if (status.resolved || status.expired || status.cancelled) {
+      setSigningStatus("rejected");
+    }
+  }, [refetchBalance, xamanUuid]);
+
+  useEffect(() => {
+    if (!xamanSocketUrl || !xamanUuid) return;
+    const socket = new WebSocket(xamanSocketUrl);
+    socket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(String(event.data)) as { signed?: boolean; expired?: boolean };
+        if (message.signed !== undefined || message.expired) {
+          void refreshXamanStatus(xamanUuid).finally(() => socket.close());
+        }
+      } catch {
+        // Xaman welcome and keepalive messages are not payload updates.
+      }
+    };
+    return () => socket.close();
+  }, [refreshXamanStatus, xamanSocketUrl, xamanUuid]);
+
+  async function prepare(): Promise<void> {
+    if (!address) return;
+    setLoading("prepare");
+    setError(null);
+    setXamanUrl(null);
+    setXamanUuid(null);
+    setXamanSocketUrl(null);
+    setSigningStatus("idle");
+    try {
+      setPrepared(await prepareDirectMint(address, amountXrp));
+    } catch (reason) {
+      setPrepared(null);
+      setError(reason instanceof Error ? reason.message : "Direct mint preparation failed");
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  async function openXaman(): Promise<void> {
+    if (!address) return;
+    setLoading("xaman");
+    setError(null);
+    try {
+      const response = await createXamanMint(address, amountXrp);
+      setPrepared(response.prepared);
+      const url = response.xaman.next?.always;
+      const uuid = response.xaman.uuid;
+      if (!url || !uuid) throw new Error("Xaman did not return a signing URL and payload ID");
+      setXamanUrl(url);
+      setXamanUuid(uuid);
+      setXamanSocketUrl(response.xaman.refs?.websocket_status || null);
+      setSigningStatus("waiting");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Xaman payload failed");
+    } finally {
+      setLoading(null);
+    }
+  }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-8">
-      {/* Header */}
-      <div className="text-center space-y-3">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-flare-crimson/15 text-flare-bright text-xs font-bold border border-flare-crimson/30">
-          <ArrowRightLeft className="w-3.5 h-3.5" />
-          <span>FAssets Interoperability Protocol</span>
+    <div className="page-enter mx-auto max-w-5xl space-y-7">
+      <header className="border-b border-white/[0.07] pb-6">
+        <p className="mb-3 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-flare-light"><ArrowRightLeft className="h-4 w-4" />FAssets direct mint</p>
+        <h1 className="text-4xl font-medium tracking-[-0.04em] text-white">Bring XRP to Flare.</h1>
+        <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400">One XRPL payment to the official Core Vault. Your Coston2 address is encoded in the memo.</p>
+      </header>
+
+      {!isConnected ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-5 text-sm text-amber-200">Connect the recipient Coston2 wallet to continue.</div>
+      ) : chainId !== 114 ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-5">
+          <p className="text-sm text-amber-200">This flow requires Coston2.</p>
+          <button onClick={() => switchChain({ chainId: 114 })} className="mt-3 rounded-lg bg-amber-400 px-4 py-2 text-xs font-bold text-slate-950">Switch network</button>
         </div>
-
-        <h1 className="text-3xl font-extrabold text-white">
-          Onboarding XRP ke FXRP
-        </h1>
-        <p className="text-sm text-slate-300 max-w-lg mx-auto">
-          Konversi XRP native Anda menjadi token ERC-20 FXRP di jaringan Flare untuk mulai melakukan pengiriman remitansi.
-        </p>
-      </div>
-
-      {/* Wallet Balance Status Card */}
-      <div className="glass-panel rounded-3xl p-6 sm:p-8 space-y-6">
-        <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-          <div>
-            <h3 className="text-base font-bold text-white">Status Saldo Wallet Anda</h3>
-            <p className="text-xs text-slate-400">Terbaca langsung dari smart contract FXRP ERC-20</p>
-          </div>
-
-          <div className="px-3 py-1 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300">
-            {isConnected && address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Wallet Belum Connected"}
-          </div>
-        </div>
-
-        <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800/80 text-center space-y-2">
-          <p className="text-xs text-slate-400">Total FXRP Siap Kirim:</p>
-          <p className="text-4xl font-extrabold font-mono text-flare-bright">
-            {fxrpBalance.toFixed(4)} <span className="text-xl text-slate-400">FXRP</span>
-          </p>
-          {fxrpBalance > 0 && (
-            <p className="text-xs text-emerald-400 flex items-center justify-center gap-1 pt-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Saldo FXRP terdeteksi di wallet Anda!
-            </p>
-          )}
-        </div>
-
-        {/* Honest Testnet Guidance Box */}
-        <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3">
-          <div className="flex items-center gap-2 text-xs font-bold text-amber-400">
-            <Info className="w-4 h-4" />
-            <span>Petunjuk Faucet Testnet Coston2</span>
-          </div>
-
-          <p className="text-xs text-slate-300 leading-relaxed">
-            Di jaringan <strong>Flare Coston2 Testnet</strong>, token FXRP dan gas C2FLR disediakan secara gratis langsung melalui Coston2 Faucet resmi tanpa perlu proses minting manual dari XRP Ledger.
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-3 pt-2">
-            <a
-              href="https://faucet.flare.network/coston2"
-              target="_blank"
-              rel="noreferrer"
-              className="flex-1 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-2 border border-slate-700 transition"
-            >
-              <span>Buka Faucet Official Flare</span>
-              <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-            </a>
-
-            <button
-              onClick={() => refetch()}
-              className="px-4 py-3 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-300 font-semibold text-xs transition"
-            >
-              Cek Ulang Saldo
-            </button>
-          </div>
-        </div>
-
-        {/* Step-by-step Onboarding Explanation */}
-        <div className="space-y-4 pt-2">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Cara Kerja Mint FXRP di Mainnet (Roadmap)
-          </h4>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-1">
-              <span className="text-flare-bright font-mono font-bold">01. Deposit XRP</span>
-              <p className="text-slate-300">Kirim XRP dari wallet XRPL Anda ke Core Vault FAssets.</p>
+      ) : (
+        <div className="grid gap-5 lg:grid-cols-[1fr_330px]">
+          <section className="interactive-card rounded-2xl border border-white/[0.08] bg-surface-card/80 p-5 backdrop-blur-xl sm:p-6">
+            <div className="mb-6 flex items-center justify-between border-b border-white/[0.07] pb-5">
+              <div><p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">Recipient</p><p className="mt-1 font-mono text-xs text-white">{address}</p></div>
+              <div className="text-right"><p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">FTestXRP</p><p className="mt-1 font-mono text-sm font-bold text-white">{Number(balance).toFixed(6)}</p></div>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-1">
-              <span className="text-flare-bright font-mono font-bold">02. Verifikasi FDC</span>
-              <p className="text-slate-300">Flare Data Connector membuktikan transaksi XRPL secara trustless.</p>
+            <label className="block text-xs font-semibold text-slate-300">
+              XRP amount on XRPL Testnet
+              <input type="number" min="0" step="0.000001" value={amountXrp} onChange={(event) => setAmountXrp(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 font-mono text-white" />
+            </label>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <button onClick={() => void prepare()} disabled={Boolean(loading)} className="flex items-center justify-center gap-2 rounded-lg border border-slate-700 px-4 py-3 text-xs font-bold text-white disabled:opacity-50">{loading === "prepare" && <Loader2 className="h-4 w-4 animate-spin" />}Review payload</button>
+              <button onClick={() => void openXaman()} disabled={Boolean(loading)} className="flex items-center justify-center gap-2 rounded-lg bg-flare-crimson px-4 py-3 text-xs font-bold text-white disabled:opacity-50">{loading === "xaman" && <Loader2 className="h-4 w-4 animate-spin" />}Sign with Xaman</button>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-1">
-              <span className="text-flare-bright font-mono font-bold">03. Terima FXRP</span>
-              <p className="text-slate-300">Smart contract menerbitkan FXRP 1:1 langsung ke wallet EVM Anda.</p>
-            </div>
-          </div>
-        </div>
+            {error && <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200"><AlertCircle className="h-4 w-4 shrink-0" />{error}</div>}
 
-        {/* Proceed CTA */}
-        <div className="pt-4 border-t border-slate-800">
-          <Link
-            href="/send"
-            className="w-full py-4 rounded-2xl bg-gradient-flare hover:opacity-95 text-white font-extrabold text-sm shadow-flare-glow flex items-center justify-center gap-2 transition"
-          >
-            <span>Saya Sudah Punya FXRP → Mulai Kirim Remitansi</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
+            {prepared && (
+              <div className="mt-6 space-y-3 border-t border-white/[0.07] pt-5 text-xs">
+                <Field label="Core Vault" value={prepared.xrplTransaction.Destination} />
+                <Field label="Amount (drops)" value={prepared.quote.grossDrops} />
+                <Field label="MemoData" value={prepared.xrplTransaction.Memos[0].Memo.MemoData} />
+                <div className="grid grid-cols-3 gap-2 rounded-lg border border-slate-800 bg-slate-950 p-3 text-center">
+                  <Stat label="Mint fee" value={formatUnits(BigInt(prepared.quote.mintingFeeDrops), 6)} />
+                  <Stat label="Executor" value={formatUnits(BigInt(prepared.quote.executorFeeDrops), 6)} />
+                  <Stat label="Est. net" value={formatUnits(BigInt(prepared.quote.estimatedNetFxrpDrops), 6)} />
+                </div>
+                <p className="text-amber-300">{prepared.warning}</p>
+              </div>
+            )}
+          </section>
+
+          <aside className="interactive-card space-y-4 rounded-2xl border border-white/[0.08] bg-surface-card/80 p-5 backdrop-blur-xl">
+            {xamanUrl ? (
+              <div className="text-center">
+                <div className="mx-auto w-fit rounded-lg bg-white p-3"><QRCodeSVG value={xamanUrl} size={190} /></div>
+                <a href={xamanUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-flare-bright">Open Xaman <ExternalLink className="h-3 w-3" /></a>
+                <p className="mt-2 text-xs text-slate-400">{signingStatus === "waiting" ? "Waiting for the XRPL signature and submission..." : signingStatus === "signed" ? "XRPL payment submitted" : signingStatus === "rejected" ? "Payload rejected or expired" : ""}</p>
+                {xamanUuid && signingStatus === "waiting" && <button onClick={() => void refreshXamanStatus()} className="mt-2 text-xs text-slate-300 underline">Check status</button>}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-slate-700 p-6 text-center text-xs text-slate-500">Your Xaman QR appears here after the payload is created.</div>
+            )}
+
+            <label className="block text-xs font-semibold text-slate-300">
+              XRPL transaction hash
+              <input value={xrplHash} onChange={(event) => setXrplHash(event.target.value.trim())} placeholder="64-character transaction hash" className="mt-2 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 font-mono text-xs text-white" />
+            </label>
+            {/^[A-Fa-f0-9]{64}$/.test(xrplHash) && <a href={`https://testnet.xrpl.org/transactions/${xrplHash}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-flare-bright">Verify on XRPL Testnet <ExternalLink className="h-3 w-3" /></a>}
+            <button onClick={() => void refetchBalance()} className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-xs font-bold text-white"><RefreshCw className="h-4 w-4" />Refresh FTestXRP balance</button>
+          </aside>
         </div>
-      </div>
+      )}
     </div>
   );
+}
+
+function Field({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="rounded-lg border border-slate-800 bg-slate-950 p-3">
+      <div className="mb-1 flex items-center justify-between"><span className="text-slate-500">{label}</span><button onClick={() => navigator.clipboard.writeText(value).then(() => setCopied(true))} title={`Copy ${label}`} className="text-slate-400 hover:text-white">{copied ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}</button></div>
+      <p className="break-all font-mono text-[11px] text-white">{value}</p>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return <div><p className="text-[10px] text-slate-500">{label}</p><p className="mt-1 font-mono text-xs font-bold text-white">{value} XRP</p></div>;
 }

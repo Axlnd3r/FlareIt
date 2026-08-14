@@ -1,66 +1,23 @@
-## Foundry
+# FlareIt Contracts
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+- `RateReader.sol`: XRP/USD reader using FtsoV2 resolved through the Flare Contract Registry.
+- `SendContract.sol`: non-custodial FTestXRP transfer router with an indexed `Sent` event.
+- `MerchantPayment.sol`: direct FTestXRP merchant payment with unique IDs and an on-chain quote deadline.
 
-Foundry consists of:
+## Test
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
-
-## Documentation
-
-https://book.getfoundry.sh/
-
-## Usage
-
-### Build
-
-```shell
-$ forge build
+```powershell
+forge fmt --check
+forge test -vv
+forge test --match-contract RateReaderTest --fork-url https://coston2-api.flare.network/ext/C/rpc -vv
 ```
 
-### Test
+## Deploy
 
-```shell
-$ forge test
+Configure `PRIVATE_KEY` and the official FTestXRP address in `.env`, fund the deployer with C2FLR, then run:
+
+```powershell
+forge script script/Deploy.s.sol --rpc-url coston2 --broadcast -vvv
 ```
 
-### Format
-
-```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+Never commit the private key. Record addresses, deployment block, transaction hashes, and explorer verification in `../docs/evidence-runs.md`.

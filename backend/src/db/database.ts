@@ -30,13 +30,43 @@ export async function getDb(): Promise<Database> {
     console.log("[DB] Created new database at:", dbPath);
   }
 
-  // Initialize schema
+  migrateLegacyTransactionConstraint(db);
   initSchema(db);
 
   // Persist to file every 10 seconds
   saveInterval = setInterval(() => saveDb(), 10_000);
 
   return db;
+}
+
+function migrateLegacyTransactionConstraint(database: Database): void {
+  const table = database.exec(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'transactions'"
+  );
+  const createSql = String(table[0]?.values[0]?.[0] || "");
+  if (!/tx_hash\s+TEXT\s+NOT\s+NULL\s+UNIQUE/i.test(createSql)) return;
+
+  database.run(`
+    BEGIN;
+    ALTER TABLE transactions RENAME TO transactions_legacy;
+    CREATE TABLE transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sender TEXT NOT NULL,
+      recipient TEXT NOT NULL,
+      amount TEXT NOT NULL,
+      tx_hash TEXT NOT NULL,
+      block_number INTEGER,
+      log_index INTEGER,
+      created_at INTEGER NOT NULL
+    );
+    INSERT OR IGNORE INTO transactions
+      (id, sender, recipient, amount, tx_hash, block_number, log_index, created_at)
+      SELECT id, sender, recipient, amount, tx_hash, block_number, log_index, created_at
+      FROM transactions_legacy;
+    DROP TABLE transactions_legacy;
+    COMMIT;
+  `);
+  console.log("[DB] Migrated transaction uniqueness to (tx_hash, log_index)");
 }
 
 function initSchema(db: Database): void {
@@ -78,9 +108,21 @@ export function insertTransaction(
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [tx.sender, tx.recipient, tx.amount, tx.tx_hash, tx.block_number, tx.log_index, tx.created_at]
     );
-    return true;
+    return db.getRowsModified() > 0;
   } catch {
     return false;
+  }
+}
+
+export function closeDb(): void {
+  if (saveInterval) {
+    clearInterval(saveInterval);
+    saveInterval = null;
+  }
+  if (db) {
+    saveDb();
+    db.close();
+    db = null;
   }
 }
 

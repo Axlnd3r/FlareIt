@@ -22,10 +22,10 @@ if ($LASTEXITCODE -eq 0) { Write-Host "  ✓ Contracts compiled" -ForegroundColo
 else { Write-Host "  ✗ Contract build failed!" -ForegroundColor Red }
 Pop-Location
 
-# Run SendContract tests
+# Run all contract tests
 Write-Host "`n[3/4] Running unit tests..." -ForegroundColor Yellow
 Push-Location contracts
-forge test --match-contract SendContractTest 2>&1 | Select-Object -Last 5
+forge test 2>&1 | Select-Object -Last 12
 Pop-Location
 
 # Check backend
@@ -51,8 +51,9 @@ Write-Host @"
    forge script script/Deploy.s.sol --rpc-url coston2 --broadcast -vvv
 
 2. UPDATE .env FILES:
-   - backend/.env (SEND_CONTRACT_ADDRESS, RATE_READER_ADDRESS, FXRP_ADDRESS)
-   - frontend/.env.local (NEXT_PUBLIC_ versions of same)
+   - backend/.env (SEND_CONTRACT_ADDRESS, RATE_READER_ADDRESS, MERCHANT_PAYMENT_ADDRESS)
+   - backend/.env (INDEXER_START_BLOCK = SendContract deployment block)
+   - frontend/.env.local (NEXT_PUBLIC_ versions of all three custom contracts)
 
 3. START BACKEND:
    cd backend
@@ -64,5 +65,6 @@ Write-Host @"
 
 5. GET TESTNET FUNDS:
    - C2FLR: https://faucet.flare.network/coston2
-   - FXRP: https://faucet.flare.network/coston2 (same faucet)
+   - XRP Testnet: https://faucet.altnet.rippletest.net/accounts
+   - FTestXRP: use the FlareIt direct-mint flow
 "@ -ForegroundColor White

@@ -1,17 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAccount } from "wagmi";
-import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  RefreshCw,
-  ExternalLink,
-  History,
-  Clock,
-  Search,
-  CheckCircle,
-} from "lucide-react";
+import { AlertCircle, ArrowDownLeft, ArrowUpRight, ExternalLink, History, RefreshCw, Search } from "lucide-react";
 import { fetchTransactions, formatIdr, formatRelativeTime, shortenAddress, type Transaction } from "@/lib/api";
 import { getTxExplorerUrl } from "@/lib/contracts";
 
@@ -20,176 +11,81 @@ interface TransactionHistoryProps {
   xrpIdrRate?: number;
 }
 
-export function TransactionHistory({ customAddress, xrpIdrRate = 17069.69 }: TransactionHistoryProps) {
-  const { address: connectedAddress } = useAccount();
-  const targetAddress = customAddress || connectedAddress;
-
+export function TransactionHistory({ customAddress, xrpIdrRate }: TransactionHistoryProps) {
+  const { address } = useAccount();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [searchAddress, setSearchAddress] = useState("");
   const [loading, setLoading] = useState(false);
-  const [searchAddr, setSearchAddr] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const activeAddress = searchAddress || customAddress || address;
 
-  const activeAddress = searchAddr || targetAddress;
-
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     if (!activeAddress) return;
+    setLoading(true);
     try {
-      setLoading(true);
-      const res = await fetchTransactions(activeAddress);
-      setTransactions(res.transactions || []);
-    } catch (err) {
-      console.warn("Backend API unavailable, using mock transactions:", err);
-      // Fallback demo data if backend is offline
-      setTransactions([
-        {
-          id: 1,
-          sender: "0x3A21...b84F",
-          recipient: activeAddress.toLowerCase(),
-          amount: "100000000",
-          amountFxrp: "100.000000",
-          txHash: "0x89f81a7b8e1a90c4238e81e3a9c7b5f2a1d0e9c8b7a6f5e4d3c2b1a098765432",
-          blockNumber: 12847291,
-          createdAt: Math.floor(Date.now() / 1000) - 180, // 3 mins ago
-          direction: "received",
-        },
-        {
-          id: 2,
-          sender: activeAddress.toLowerCase(),
-          recipient: "0x7890...1234",
-          amount: "25000000",
-          amountFxrp: "25.000000",
-          txHash: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-          blockNumber: 12847100,
-          createdAt: Math.floor(Date.now() / 1000) - 7200, // 2 hours ago
-          direction: "sent",
-        },
-      ]);
+      const response = await fetchTransactions(activeAddress);
+      setTransactions(response.transactions);
+      setError(null);
+    } catch (reason) {
+      setTransactions([]);
+      setError(reason instanceof Error ? reason.message : "History unavailable");
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    if (activeAddress) loadHistory();
   }, [activeAddress]);
 
+  useEffect(() => {
+    void loadHistory();
+  }, [loadHistory]);
+
   return (
-    <div className="glass-panel rounded-3xl p-6 sm:p-8 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+    <section className="rounded-lg border border-slate-800 bg-surface-card p-5">
+      <div className="flex flex-col justify-between gap-4 border-b border-slate-800 pb-4 sm:flex-row sm:items-center">
         <div>
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            <History className="w-5 h-5 text-flare-bright" />
-            Riwayat Transaksi Remitansi
-          </h3>
-          <p className="text-xs text-slate-400 mt-1">
-            Terbaca langsung dari event on-chain <code className="text-slate-300 font-mono">Sent()</code>
-          </p>
+          <h2 className="flex items-center gap-2 text-base font-bold text-white"><History className="h-5 w-5 text-flare-bright" />On-chain history</h2>
+          <p className="mt-1 text-xs text-slate-400">Indexed from SendContract.Sent events on Coston2</p>
         </div>
-
         <div className="flex items-center gap-2">
-          {/* Address Search Bar */}
           <div className="relative">
-            <input
-              type="text"
-              placeholder="Cari Alamat EVM..."
-              value={searchAddr}
-              onChange={(e) => setSearchAddr(e.target.value)}
-              className="pl-8 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-flare-bright w-48 sm:w-56"
-            />
-            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+            <input value={searchAddress} onChange={(event) => setSearchAddress(event.target.value)} placeholder="0x address" className="w-52 rounded-lg border border-slate-800 bg-slate-950 py-2 pl-9 pr-3 font-mono text-xs text-white" />
           </div>
-
-          <button
-            onClick={loadHistory}
-            disabled={loading}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
-            title="Refresh History"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          <button onClick={() => void loadHistory()} disabled={loading} className="p-2 text-slate-400 hover:text-white" title="Refresh history">
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>
 
-      {/* Transactions List */}
-      {!activeAddress ? (
-        <div className="py-12 text-center text-slate-500 text-sm">
-          Sambungkan wallet atau ketik alamat EVM untuk melihat riwayat transaksi.
-        </div>
+      {error ? (
+        <div className="mt-4 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-200"><AlertCircle className="h-4 w-4" />{error}</div>
+      ) : !activeAddress ? (
+        <p className="py-10 text-center text-sm text-slate-500">Connect a wallet or enter an address.</p>
       ) : transactions.length === 0 ? (
-        <div className="py-12 text-center text-slate-500 text-sm">
-          Belum ada transaksi pengiriman atau penerimaan FXRP untuk alamat ini.
-        </div>
+        <p className="py-10 text-center text-sm text-slate-500">No transfer events found for this address.</p>
       ) : (
-        <div className="space-y-3">
-          {transactions.map((tx) => {
-            const isReceived = tx.direction === "received";
-            const fxrpVal = parseFloat(tx.amountFxrp);
-            const idrVal = fxrpVal * xrpIdrRate;
-
+        <div className="mt-4 divide-y divide-slate-800">
+          {transactions.map((transaction) => {
+            const received = transaction.direction === "received";
+            const amount = Number(transaction.amountFxrp);
             return (
-              <div
-                key={tx.id || tx.txHash}
-                className="p-4 rounded-2xl bg-surface-card border border-slate-800/80 hover:border-slate-700 transition flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-              >
-                <div className="flex items-start gap-3.5">
-                  <div
-                    className={`p-2.5 rounded-xl border shrink-0 ${
-                      isReceived
-                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                        : "bg-flare-crimson/10 border-flare-crimson/20 text-flare-bright"
-                    }`}
-                  >
-                    {isReceived ? <ArrowDownLeft className="w-5 h-5" /> : <ArrowUpRight className="w-5 h-5" />}
-                  </div>
-
+              <div key={`${transaction.txHash}-${transaction.id}`} className="flex flex-col justify-between gap-3 py-4 sm:flex-row sm:items-center">
+                <div className="flex items-center gap-3">
+                  {received ? <ArrowDownLeft className="h-5 w-5 text-emerald-400" /> : <ArrowUpRight className="h-5 w-5 text-flare-bright" />}
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-white">
-                        {isReceived ? "Diterima dari" : "Dikirim ke"}
-                      </span>
-                      <span className="font-mono text-xs font-semibold text-slate-300 bg-slate-900 px-2 py-0.5 rounded-lg border border-slate-800">
-                        {shortenAddress(isReceived ? tx.sender : tx.recipient)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
-                      <Clock className="w-3.5 h-3.5 text-slate-500" />
-                      <span>{formatRelativeTime(tx.createdAt)}</span>
-                      <span>•</span>
-                      <span className="text-emerald-400 font-medium">Finality Instant</span>
-                    </div>
+                    <p className="text-sm font-semibold text-white">{received ? "From" : "To"} {shortenAddress(received ? transaction.sender : transaction.recipient)}</p>
+                    <p className="text-xs text-slate-500">{formatRelativeTime(transaction.createdAt)} · block {transaction.blockNumber ?? "pending"}</p>
                   </div>
                 </div>
-
-                <div className="text-right flex sm:flex-col items-center sm:items-end justify-between border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-800/60">
-                  <div>
-                    <p
-                      className={`text-base font-extrabold font-mono ${
-                        isReceived ? "text-emerald-400" : "text-white"
-                      }`}
-                    >
-                      {isReceived ? "+" : "-"}{fxrpVal.toFixed(4)} FXRP
-                    </p>
-                    <p className="text-xs text-slate-400 font-mono">
-                      ≈ {formatIdr(idrVal)}
-                    </p>
-                  </div>
-
-                  <a
-                    href={getTxExplorerUrl(tx.txHash)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[11px] text-slate-500 hover:text-flare-bright font-mono flex items-center gap-1 mt-1 transition"
-                  >
-                    <span>Coston2 Explorer</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
+                <div className="text-left sm:text-right">
+                  <p className="font-mono text-sm font-bold text-white">{received ? "+" : "-"}{amount.toFixed(6)} FXRP</p>
+                  {xrpIdrRate && <p className="text-xs text-slate-500">Est. {formatIdr(amount * xrpIdrRate)}</p>}
+                  <a href={getTxExplorerUrl(transaction.txHash)} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-flare-bright">Explorer <ExternalLink className="h-3 w-3" /></a>
                 </div>
               </div>
             );
           })}
         </div>
       )}
-    </div>
+    </section>
   );
 }

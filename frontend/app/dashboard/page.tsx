@@ -1,116 +1,42 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useAccount, useReadContract } from "wagmi";
+import { useCallback, useState } from "react";
+import { useAccount, useChainId, useReadContract } from "wagmi";
 import { formatUnits } from "viem";
-import { LayoutDashboard, ShieldCheck, RefreshCw } from "lucide-react";
+import { LayoutDashboard, RefreshCw, ShieldCheck } from "lucide-react";
 import { CONTRACT_ADDRESSES, ERC20_ABI, FXRP_DECIMALS } from "@/lib/contracts";
 import { RateDisplay } from "@/components/RateDisplay";
 import { TransactionHistory } from "@/components/TransactionHistory";
-import { formatIdr, fetchRate, type RateData } from "@/lib/api";
+import { formatIdr, type RateData } from "@/lib/api";
 
 export default function DashboardPage() {
   const { address } = useAccount();
-  const [rateData, setRateData] = useState<RateData | null>(null);
-
-  useEffect(() => {
-    fetchRate().then(setRateData).catch(console.error);
-  }, []);
-
-  const { data: fxrpBalanceRaw, refetch } = useReadContract({
+  const chainId = useChainId();
+  const [rate, setRate] = useState<RateData | null>(null);
+  const handleRate = useCallback((nextRate: RateData) => setRate(nextRate), []);
+  const { data: balanceRaw, refetch } = useReadContract({
     address: CONTRACT_ADDRESSES.FXRP,
     abi: ERC20_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
-    query: { enabled: !!address },
+    query: { enabled: Boolean(address && chainId === 114) },
   });
-
-  const fxrpBalance = fxrpBalanceRaw ? Number(formatUnits(fxrpBalanceRaw as bigint, FXRP_DECIMALS)) : 0;
-  const xrpIdr = rateData?.xrpIdr || 17069.69;
-  const idrEquivalent = fxrpBalance * xrpIdr;
+  const balance = balanceRaw ? Number(formatUnits(balanceRaw, FXRP_DECIMALS)) : 0;
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-extrabold text-white flex items-center gap-3">
-            <LayoutDashboard className="w-7 h-7 text-flare-bright" />
-            Dashboard Penerima
-          </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Pandangan ramah pengguna non-teknis — estimasi nilai saldo dalam Rupiah berdasarkan orakel FTSO v2.
-          </p>
-        </div>
+    <div className="page-enter mx-auto max-w-5xl space-y-6">
+      <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div><h1 className="flex items-center gap-2 text-3xl font-bold text-white"><LayoutDashboard className="h-7 w-7 text-flare-bright" />Recipient dashboard</h1><p className="mt-1 text-sm text-slate-400">FTestXRP balance and SendContract history.</p></div>
+        <button onClick={() => void refetch()} className="flex items-center gap-2 rounded-lg border border-slate-700 px-4 py-2 text-xs font-bold text-white"><RefreshCw className="h-4 w-4" />Refresh</button>
+      </header>
 
-        <button
-          onClick={() => refetch()}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition w-fit"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          <span>Perbarui Saldo</span>
-        </button>
-      </div>
+      <section className="interactive-card grid gap-px overflow-hidden rounded-xl border border-slate-800 bg-slate-800 md:grid-cols-2">
+        <div className="bg-surface-card p-6"><p className="text-xs text-slate-500">On-chain balance</p><p className="mt-3 font-mono text-3xl font-bold text-white">{balance.toFixed(6)} <span className="text-base text-slate-500">FXRP</span></p><p className="mt-3 flex items-center gap-1 text-xs text-emerald-400"><ShieldCheck className="h-4 w-4" />FAssets Coston2 token balance</p></div>
+        <div className="bg-surface-card p-6"><p className="text-xs text-slate-500">Estimated IDR value</p><p className="mt-3 font-mono text-3xl font-bold text-white">{rate ? formatIdr(balance * rate.xrpIdr) : "Unavailable"}</p><p className="mt-3 text-xs text-slate-500">Reference only; this is not an IDR balance or fiat settlement.</p></div>
+      </section>
 
-      {/* Recipient Primary Balance Card */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* IDR Primary Balance Hero Card */}
-        <div className="md:col-span-2 glass-panel p-6 sm:p-8 rounded-3xl relative overflow-hidden space-y-4">
-          <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Total Saldo Diterima (Nilai Rupiah)
-            </span>
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-              Siap Digunakan
-            </span>
-          </div>
-
-          <div>
-            <p className="text-4xl sm:text-5xl font-extrabold font-mono text-emerald-400">
-              {formatIdr(idrEquivalent)}
-            </p>
-            <p className="text-xs text-slate-400 mt-2 font-mono">
-              = {fxrpBalance.toFixed(4)} FXRP (Dikonversi via FTSO Rate 1 FXRP = {formatIdr(xrpIdr)})
-            </p>
-          </div>
-
-          <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-            <span className="flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              Bisa langsung ditransfer atau digunakan di merchant QRIS
-            </span>
-          </div>
-        </div>
-
-        {/* FXRP Asset Card */}
-        <div className="glass-panel p-6 rounded-3xl space-y-4 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
-              <span>Aset On-Chain</span>
-              <span className="px-2 py-0.5 rounded bg-flare-crimson/20 text-flare-bright font-bold text-[10px]">
-                FAssets
-              </span>
-            </div>
-            <p className="text-2xl font-bold font-mono text-white">
-              {fxrpBalance.toFixed(4)}
-            </p>
-            <p className="text-xs text-slate-400 font-mono">FXRP Token</p>
-          </div>
-
-          <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 text-[11px] text-slate-400 space-y-1">
-            <p className="text-white font-semibold">100% Backed by FAssets</p>
-            <p>Terhubung langsung dengan ledger XRP tanpa kustodian bank.</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Live FTSO Rate Display */}
-      <RateDisplay compact />
-
-      {/* Full Transaction History */}
-      <TransactionHistory xrpIdrRate={xrpIdr} />
+      <RateDisplay compact onRateChange={handleRate} />
+      <TransactionHistory xrpIdrRate={rate?.xrpIdr} />
     </div>
   );
 }
