@@ -31,6 +31,9 @@ export const coston2 = defineChain({
 // ─── wagmi Config ─────────────────────────────────────────────────────────────
 export const wagmiConfig = createConfig({
   chains: [coston2],
+  // Keep a single generic injected-wallet connector. Without this, Wagmi also
+  // discovers EIP-6963 providers and the navbar renders an extra connect button.
+  multiInjectedProviderDiscovery: false,
   connectors: [
     injected(), // Standard injected connector for EVM wallets (MetaMask, Rabby, Coinbase, etc.)
   ],
