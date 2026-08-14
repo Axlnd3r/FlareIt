@@ -142,8 +142,8 @@ export function createMerchantPaymentQuote(
   });
 }
 
-export function fetchMerchantPaymentQuote(paymentId: string): Promise<MerchantPaymentQuote> {
-  return fetchJson(`/api/payments/quote/${paymentId}`);
+export function fetchMerchantPaymentQuote(quoteToken: string): Promise<MerchantPaymentQuote> {
+  return fetchJson(`/api/payments/quote/${encodeURIComponent(quoteToken)}`);
 }
 
 export function formatIdr(amount: number): string {

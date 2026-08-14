@@ -54,10 +54,11 @@ export function MerchantPaymentQR() {
   }, [approvalReceipt.isSuccess, refetchAllowance]);
 
   useEffect(() => {
-    const invoiceId = new URLSearchParams(window.location.search).get("invoice");
-    if (!invoiceId) return;
+    const search = new URLSearchParams(window.location.search);
+    const quoteToken = search.get("quote") || search.get("invoice");
+    if (!quoteToken) return;
     setQuoteLoading(true);
-    fetchMerchantPaymentQuote(invoiceId)
+    fetchMerchantPaymentQuote(quoteToken)
       .then((invoice) => {
         setQuote(invoice);
         setMerchant(invoice.params.merchant);

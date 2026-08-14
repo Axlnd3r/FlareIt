@@ -35,6 +35,8 @@ services:
         sync: false
       - key: XAMAN_API_SECRET
         sync: false
+      - key: QUOTE_SIGNING_SECRET
+        sync: false
 
   - type: web
     name: flareit-web

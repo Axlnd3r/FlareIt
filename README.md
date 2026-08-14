@@ -97,14 +97,16 @@ The same-origin production proxy derives merchant invoice links from the browser
 
 ## Deploy the MVP
 
-The repository includes `render.yaml` for a public two-service deployment:
+The live MVP runs on Vercel Hobby with free `vercel.app` domains:
 
-- `flareit-web`: the Next.js frontend, with same-origin `/api` proxying;
-- `flareit-api`: the persistent Node process for rates, FAssets/Xaman payloads, and chain indexing.
+- Web: [flareit-app.vercel.app](https://flareit-app.vercel.app)
+- API health: [flareit-api.vercel.app/health](https://flareit-api.vercel.app/health)
 
-Push the repository to GitHub, choose **New > Blueprint** in Render, and select this repository. Render reads the service roots, public Coston2 addresses, health checks, and cross-service hostnames automatically. Enter `XAMAN_API_KEY` and `XAMAN_API_SECRET` when prompted, or leave both empty if only manual direct-mint payload preparation is needed.
+The GitHub repository is connected to two Vercel projects with `frontend` and `backend` as their respective root directories. The web project proxies same-origin `/api` requests to the Express project. On Vercel, transaction history is read on demand from Coston2 Explorer and merchant invoices use signed stateless tokens, so neither feature depends on a persistent process or writable database.
 
-The free Blueprint uses an ephemeral SQL.js file and rebuilds indexed history from block `33924221` after a restart. Attach a persistent disk and point `DB_PATH` into its mount path if you need durable indexer state.
+Xaman credentials are intentionally not committed or uploaded by the deployment workflow. Add `XAMAN_API_KEY` and `XAMAN_API_SECRET` as sensitive Vercel environment variables only when the hosted Xaman signing flow is required. Manual direct-mint preparation remains available without them.
+
+The repository still includes `render.yaml` as an optional persistent-host deployment. Persistent hosts run the local SQL.js indexer; Vercel uses the stateless explorer adapter instead.
 
 Use the official Coston2 FTestXRP address, a locally configured deployer key, and a deployer funded with C2FLR:
 

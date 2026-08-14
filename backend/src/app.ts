@@ -50,3 +50,6 @@ export function createApp() {
   app.use((_req, res) => res.status(404).json({ error: "Not found" }));
   return app;
 }
+
+// `src/app.ts` is a Vercel-recognized Express entrypoint.
+export default createApp();

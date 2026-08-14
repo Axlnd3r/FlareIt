@@ -8,7 +8,7 @@ import { createApp } from "../app";
 import { config, ZERO_ADDRESS } from "../config";
 import { closeDb, getDb, insertTransaction } from "../db/database";
 import { buildDirectMintingMemo } from "../routes/fassets";
-import { buildMerchantPaymentQuote } from "../routes/payments";
+import { buildMerchantPaymentQuote, verifyQuoteToken } from "../routes/payments";
 import { validateFtsoRate, type RateData } from "../routes/rate";
 
 const testDb = path.resolve(".flareit-test.db");
@@ -54,7 +54,10 @@ test("merchant quote carries an enforceable five-minute deadline", () => {
     );
     assert.equal(quote.params.amount, "2000000");
     assert.equal(quote.params.deadline, 1_700_000_300);
-    assert.match(quote.qrPayload, /\/merchant\?invoice=0x[a-f0-9]{64}$/);
+    assert.match(quote.qrPayload, /\/merchant\?quote=[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+    const token = quote.qrPayload.split("quote=")[1];
+    assert.equal(verifyQuoteToken(token).params.paymentId, quote.params.paymentId);
+    assert.throws(() => verifyQuoteToken(`${token}x`), /signature/);
   } finally {
     config.MERCHANT_PAYMENT_ADDRESS = originalMerchantPayment;
   }

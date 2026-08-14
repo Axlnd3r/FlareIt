@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "crypto";
+import { createHash, createHmac, randomUUID, timingSafeEqual } from "crypto";
 import { Router, Request, Response } from "express";
 import { isAddress } from "viem";
 import { config, isConfigured } from "../config";
@@ -6,6 +6,17 @@ import { getRateSnapshot, type RateData } from "./rate";
 
 const router = Router();
 const QUOTE_TTL_SECONDS = 300;
+
+function signQuotePayload(payload: object): string {
+  if (config.QUOTE_SIGNING_SECRET.length < 32) {
+    throw new Error("QUOTE_SIGNING_SECRET must contain at least 32 characters");
+  }
+  const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const signature = createHmac("sha256", config.QUOTE_SIGNING_SECRET)
+    .update(encoded)
+    .digest("base64url");
+  return `${encoded}.${signature}`;
+}
 
 export function buildMerchantPaymentQuote(
   merchant: `0x${string}`,
@@ -28,11 +39,7 @@ export function buildMerchantPaymentQuote(
     merchantReferenceHash: referenceHash,
     deadline,
   };
-  const query = new URLSearchParams({
-    invoice: paymentId,
-  });
-
-  return {
+  const unsignedQuote = {
     mode: "fxrp-on-chain" as const,
     settlementStatus: "fxrp-on-chain" as const,
     fiatOffRampStatus: "licensed-partner-required" as const,
@@ -42,12 +49,53 @@ export function buildMerchantPaymentQuote(
     functionName: "payMerchant" as const,
     merchantReference,
     params,
-    qrPayload: `/merchant?${query.toString()}`,
     disclaimer: "This QR pays FXRP on Coston2. It is not a production QRIS code or IDR settlement.",
+  };
+  const quoteToken = signQuotePayload(unsignedQuote);
+
+  return {
+    ...unsignedQuote,
+    qrPayload: `/merchant?quote=${quoteToken}`,
   };
 }
 
+type MerchantPaymentQuote = ReturnType<typeof buildMerchantPaymentQuote>;
 const merchantQuotes = new Map<string, ReturnType<typeof buildMerchantPaymentQuote>>();
+
+export function verifyQuoteToken(token: string): MerchantPaymentQuote {
+  if (token.length > 12_000) throw new Error("Quote token is too large");
+  const [encoded, signature, extra] = token.split(".");
+  if (!encoded || !signature || extra) throw new Error("Malformed quote token");
+
+  const expected = createHmac("sha256", config.QUOTE_SIGNING_SECRET).update(encoded).digest();
+  const actual = Buffer.from(signature, "base64url");
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    throw new Error("Invalid quote signature");
+  }
+
+  const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as
+    Omit<MerchantPaymentQuote, "qrPayload">;
+  if (
+    parsed.mode !== "fxrp-on-chain"
+    || parsed.contract.toLowerCase() !== config.MERCHANT_PAYMENT_ADDRESS.toLowerCase()
+    || parsed.functionName !== "payMerchant"
+    || !/^0x[a-fA-F0-9]{64}$/.test(parsed.params?.paymentId || "")
+    || !isAddress(parsed.params?.merchant || "")
+    || !/^\d+$/.test(parsed.params?.amount || "")
+    || !Number.isSafeInteger(parsed.params?.idrQuote)
+    || parsed.params.idrQuote < 1
+    || parsed.params.deadline !== parsed.expiresAt
+    || typeof parsed.merchantReference !== "string"
+    || parsed.merchantReference.length > 128
+  ) {
+    throw new Error("Invalid quote payload");
+  }
+
+  return {
+    ...parsed,
+    qrPayload: `/merchant?quote=${token}`,
+  };
+}
 
 function pruneMerchantQuotes(nowSeconds: number): void {
   for (const [paymentId, quote] of merchantQuotes) {
@@ -90,18 +138,24 @@ router.post("/quote", async (req: Request, res: Response): Promise<void> => {
 });
 
 router.get("/quote/:paymentId", (req: Request, res: Response): void => {
-  const paymentId = req.params.paymentId.toLowerCase();
-  if (!/^0x[a-f0-9]{64}$/.test(paymentId)) {
-    res.status(400).json({ error: "Invalid invoice ID" });
-    return;
+  const identifier = req.params.paymentId;
+  let quote: MerchantPaymentQuote | undefined;
+  if (/^0x[a-fA-F0-9]{64}$/.test(identifier)) {
+    quote = merchantQuotes.get(identifier.toLowerCase());
+  } else {
+    try {
+      quote = verifyQuoteToken(identifier);
+    } catch {
+      res.status(400).json({ error: "Invalid or tampered invoice" });
+      return;
+    }
   }
-  const quote = merchantQuotes.get(paymentId);
   if (!quote) {
     res.status(404).json({ error: "Invoice not found or backend restarted" });
     return;
   }
   if (quote.expiresAt < Math.floor(Date.now() / 1000)) {
-    merchantQuotes.delete(paymentId);
+    merchantQuotes.delete(quote.params.paymentId);
     res.status(410).json({ error: "Invoice expired" });
     return;
   }

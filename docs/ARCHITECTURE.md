@@ -37,7 +37,9 @@ The backend reads `directMintingPaymentAddress`, minimum fee, fee BIPS, and exec
 
 ## Indexer Recovery
 
-The indexer starts at `INDEXER_START_BLOCK` for a fresh database, scans every block in configurable chunks, persists each processed range even when it contains no events, and uses `(tx_hash, log_index)` for event idempotency. The same polling loop performs backfill and live sync, eliminating the startup handoff gap. Set `INDEXER_START_BLOCK` to the SendContract deployment block.
+On a persistent Node host, the indexer starts at `INDEXER_START_BLOCK` for a fresh database, scans every block in configurable chunks, persists each processed range even when it contains no events, and uses `(tx_hash, log_index)` for event idempotency. The same polling loop performs backfill and live sync, eliminating the startup handoff gap. Set `INDEXER_START_BLOCK` to the SendContract deployment block.
+
+The Vercel deployment is intentionally stateless: transaction history is decoded on demand from the Coston2 Blockscout logs API, while merchant invoice payloads are authenticated with an HMAC token. This removes the always-on process and filesystem assumptions that do not hold for serverless functions.
 
 ## Merchant Payment Boundary
 

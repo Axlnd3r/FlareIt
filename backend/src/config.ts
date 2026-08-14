@@ -56,6 +56,9 @@ export const config = {
   DB_PATH: process.env.DB_PATH || "./flareit.db",
   FRONTEND_URL: envOrigin("FRONTEND_URL", "http://localhost:3000"),
   COINGECKO_API_URL: "https://api.coingecko.com/api/v3",
+  EXPLORER_API_URL: process.env.EXPLORER_API_URL || "https://coston2-explorer.flare.network/api",
+  QUOTE_SIGNING_SECRET:
+    process.env.QUOTE_SIGNING_SECRET || "flareit-local-development-signing-key-only",
 
   XAMAN_API_KEY: process.env.XAMAN_API_KEY || "",
   XAMAN_API_SECRET: process.env.XAMAN_API_SECRET || "",
